@@ -1,0 +1,15 @@
+# VS Code
+.history/
+.vscode/*
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/settings.json
+!.vscode/extensions.json
+
+# Experimental
+experimental/
+test.ts
+
+# Testing
+public/
+demo.tsx
