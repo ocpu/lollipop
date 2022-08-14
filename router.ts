@@ -1,137 +1,143 @@
-import { Response, ServerRequest } from 'https://deno.land/std/http/server.ts'
-import { BufReader, BufWriter } from "https://deno.land/std/io/bufio.ts"
-import { comparePaths, getPathname, joinPaths } from './util.ts'
-
-class HandleResult {}
-export const PRE_CONDITION_FAILED = new HandleResult()
-export class HandleSuccess extends HandleResult {
-  constructor(public value: ResponseType) {
-    super()
-  }
-}
-
-type HandlersResult = HandleResult | ResponseType
-
-interface ServerRouteHandlerContext {
-  readonly url: string
-  readonly path: string
-  readonly method: string
-  readonly params: { readonly [name: string]: string }
-  readonly headers: Headers
-  readonly conn: Deno.Conn
-  readonly body: Deno.Reader
-  readonly done: Promise<Error | undefined>
-  readonly bufReader: BufReader
-  readonly bufWriter: BufWriter
-  status(): number
-  status(status: number): HandlerContext
-  setHeader(name: string, value: string | string[]): HandlerContext
-  appendHeader(name: string, value: string | string[]): HandlerContext
-  setHeaders(headers: { [name: string]: string | string[] }): HandlerContext
-  return<R extends ResponseType>(value: R): R
-}
-
-export interface HandlerContext extends ServerRouteHandlerContext, Lollipop.HandlerContext {}
-
-export type ResponseType =
-  | undefined
-  | Uint8Array
-  | Deno.Reader
-  | string
-  | number
-  | any[]
-  | object
-  | null
-  | ResponseProvider
-
-export interface ResponseProvider {
-  provideResponse(context: HandlerContext): ResponseType | Promise<ResponseType>
-}
+import type { IApplicationMiddleware, RequestContext, ResponseContext } from './app.ts'
 
 /**
- * A router
+ * Takes a path spec and an optional base path and resolves all parameter names
  */
-export default class Router {
-  protected baseURL: string = '/'
-  private onURLUpdateListeners: ((baseURL: string) => void)[] = []
-  private handlers: ((request: ServerRequest, context: HandlerContext) => Promise<ResponseType> | ResponseType)[] = []
+type ResolveParams<
+  P extends string,
+  BasePath extends string | undefined = undefined
+> = P extends `${string} ${infer Path}`
+  ? ResolveParams<Path, BasePath>
+  : P extends `/:${infer Param}/${infer Rest}`
+  ? ResolveParams<Rest, BasePath> extends Record<string, string>
+    ? Record<Param | keyof ResolveParams<Rest, BasePath>, string>
+    : Record<Param, string>
+  : P extends `/:${infer Param}`
+  ? BasePath extends string
+    ? ResolveParams<BasePath> extends Record<string, string>
+      ? Record<Param | keyof ResolveParams<BasePath>, string>
+      : Record<Param, string>
+    : Record<Param, string>
+  : P extends `:${infer Param}`
+  ? BasePath extends string
+    ? ResolveParams<BasePath> extends Record<string, string>
+      ? Record<Param | keyof ResolveParams<BasePath>, string>
+      : Record<Param, string>
+    : Record<Param, string>
+  : P extends `/${infer PS}/${infer Rest}`
+  ? ResolveParams<Rest, BasePath>
+  : P extends `/${infer PS}`
+  ? BasePath extends string
+    ? ResolveParams<BasePath>
+    : Record<string, unknown>
+  : BasePath extends string
+  ? ResolveParams<BasePath>
+  : Record<string, unknown>
 
-  private updateBaseURL(baseURL: string) {
-    this.baseURL = joinPaths(baseURL, this.baseURL)
-    for (const listener of this.onURLUpdateListeners) listener(this.baseURL)
-  }
+export interface IncomingRequestRouteContext<Path extends string, BasePath extends string = string> {
+  readonly request: RequestContext
+  readonly response: ResponseContext
+  readonly params: Readonly<ResolveParams<Path, BasePath>>
+}
 
-  protected async handle(request: ServerRequest, context: HandlerContext): Promise<HandlersResult> {
-    for (const handler of this.handlers) {
-      const handlerResult = await handler(request, context)
-      if (handlerResult instanceof HandleResult) {
-        if (handlerResult instanceof HandleSuccess) return handlerResult
-        else if (handlerResult === PRE_CONDITION_FAILED) continue
-        else throw new Error('Unhandled result')
-      } else {
-        return new HandleSuccess(handlerResult)
-      }
-    }
-    return PRE_CONDITION_FAILED
-  }
+type Awaitable<T> = T | Promise<T>
+export type RouteHandler<Path extends string = string, BasePath extends string = string> = (
+  ctx: IncomingRequestRouteContext<Path, BasePath>
+) => Awaitable<void>
 
-  add(router: Router): this
-  add(path: string, router: Router): this
-  add(method: string, path: string, handler: (context: HandlerContext) => ResponseType): this
-  add(method: string | Router, path?: string | Router, handler?: (context: HandlerContext) => ResponseType): this {
-    if (method instanceof Router) {
-      method.updateBaseURL(this.baseURL)
-      this.onURLUpdateListeners.push(method.updateBaseURL)
-      this.handlers.push(method.handle)
-    } else if (path instanceof Router) {
-      path.updateBaseURL(joinPaths(this.baseURL, method))
-      this.onURLUpdateListeners.push(path.updateBaseURL)
-      this.handlers.push(path.handle)
-    } else if (path && typeof handler === 'function') {
-      let url = joinPaths(this.baseURL, path)
-      this.onURLUpdateListeners.push(baseURL => (url = joinPaths(baseURL, path)))
-      this.handlers.push((req, ctx) => {
-        if (req.method === method) {
-          const parsedURL = getPathname(req.url)
-          let params: false | string[]
-          if ((params = comparePaths(url, parsedURL)) !== false) {
-            const entries = url
-              .split('/')
-              .filter(it => it.startsWith(':'))
-              .map((it, i) => [it.substring(1), (params as string[])[i]])
-            //@ts-ignore Has to get the params from somewhere
-            for (const [key, value] of entries) ctx.params[key] = value
-            return new HandleSuccess(handler(ctx))
-          } else {
-            return PRE_CONDITION_FAILED
-          }
-        } else {
-          return PRE_CONDITION_FAILED
-        }
+type RoutesDefinition<BasePath extends string, Def extends RoutesDefinition<BasePath, Def>> = {
+  [K in keyof Def]: K extends string ? RouteHandler<K, BasePath> : never
+}
+
+export interface Router<BasePath extends string = ''> extends IApplicationMiddleware {
+  route<Path extends string>(method: string, path: Path, handler: RouteHandler<Path, BasePath>): Router<BasePath>
+  route<Path extends string>(methodAndPath: Path, handler: RouteHandler<Path, BasePath>): Router<BasePath>
+  routes<RoutesDef extends RoutesDefinition<BasePath, RoutesDef>>(routesDef: RoutesDef): Router<BasePath>
+}
+
+export type MergePath<A extends string, B extends string> = A extends `${infer ABase}/`
+  ? B extends `/${infer BBase}`
+    ? `${ABase}/${BBase}`
+    : `${ABase}/${B}`
+  : B extends `/${infer BBase}`
+  ? `${A}/${BBase}`
+  : `${A}/${B}`
+
+export interface CreateRouterOptions<BasePath extends string> {
+  baseURL?: BasePath | undefined
+}
+
+export function createRouter<BasePath extends string>(options?: CreateRouterOptions<BasePath>): Router<BasePath> {
+  const routes: { method: string; url: URLPattern; handler: RouteHandler }[] = []
+  const self: Router<BasePath> = {
+    route<Path extends string>(
+      ...args:
+        | [method: string, path: Path, handler: RouteHandler<Path, BasePath>]
+        | [methodAndPath: Path, handler: RouteHandler<Path, BasePath>]
+    ): Router<BasePath> {
+      const [_method, _path, _handler] = args
+      const [method, path, handler]: [string, string, RouteHandler<Path, BasePath>] =
+        typeof _method === 'string' && typeof _path === 'function'
+          ? [...resolveMethodAndPath(_method), _path]
+          : typeof _method === 'string' && typeof _path === 'string' && typeof _handler === 'function'
+          ? [_method, _path, _handler]
+          : ((() => {
+              throw new Error('Illegal arguments')
+            })() as never)
+      routes.push({
+        method,
+        url: new URLPattern(
+          options?.baseURL !== undefined ? combinePaths(options.baseURL, path) : path,
+          'http://localhost'
+        ),
+        handler: handler as unknown as RouteHandler,
       })
-    } else {
-      throw new Error('Invalid add signature')
+      return self
+    },
+    routes<RoutesDef extends RoutesDefinition<BasePath, RoutesDef>>(routesDef: RoutesDef): Router<BasePath> {
+      for (const [methodAndOrPath, handler] of Object.entries<RouteHandler<string, BasePath>>(routesDef)) {
+        self.route(methodAndOrPath, handler)
+      }
+      return self
+    },
+    async doHandleRequest(ctx) {
+      for (const route of routes) {
+        if (!(route.method === 'ANY' || route.method === ctx.request.method)) continue
+        const match = route.url.exec(ctx.request.url.pathname, 'http://localhost')
+        if (match === null) continue
+        route.handler({
+          params: match.pathname.groups,
+          request: ctx.request,
+          response: ctx.response,
+        })
+        return
+      }
+      await ctx.next()
+    },
+  }
+
+  return self
+
+  function resolveMethodAndPath(methodAndOrPath: string) {
+    const spaceIdx = methodAndOrPath.indexOf(' ')
+    if (spaceIdx === -1) return ['ANY', methodAndOrPath] as const
+    else {
+      const method = methodAndOrPath.slice(0, spaceIdx).trim()
+      const path = methodAndOrPath.slice(spaceIdx + 1).trim()
+      return [method === '*' ? 'ANY' : method.toUpperCase(), path.trim()] as const
     }
-
-    return this
   }
 
-  get(path: string, handler: (context: HandlerContext) => ResponseType) {
-    return this.add('GET', path, handler)
-  }
-  post(path: string, handler: (context: HandlerContext) => ResponseType) {
-    return this.add('POST', path, handler)
-  }
-  put(path: string, handler: (context: HandlerContext) => ResponseType) {
-    return this.add('PUT', path, handler)
-  }
-  delete(path: string, handler: (context: HandlerContext) => ResponseType) {
-    return this.add('DELETE', path, handler)
-  }
-  patch(path: string, handler: (context: HandlerContext) => ResponseType) {
-    return this.add('PATCH', path, handler)
-  }
-  head(path: string, handler: (context: HandlerContext) => ResponseType) {
-    return this.add('HEAD', path, handler)
+  function combinePaths<A extends string, B extends string>(a: A, b: B): MergePath<A, B> {
+    if ((a.endsWith('/') && !b.startsWith('/')) || (!a.endsWith('/') && b.startsWith('/'))) {
+      // 1 0 | 0 1
+      return (a + b) as MergePath<A, B>
+    } else if (a.endsWith('/') && b.startsWith('/')) {
+      // 1 1
+      return (a + b.substring(1)) as MergePath<A, B>
+    } else {
+      // 0 0
+      return (a + '/' + b) as MergePath<A, B>
+    }
   }
 }

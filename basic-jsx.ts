@@ -1,5 +1,3 @@
-import { HandlerContext, ResponseProvider } from './router.ts'
-
 const voidElements = [
   // HTML 4.01 / XHTML 1.0 Strict
   'area',
@@ -18,15 +16,24 @@ const voidElements = [
   'source',
 ]
 
-class BasicElement implements ResponseProvider {
-  constructor(
-    private elementTag: string,
-    private attributes: object | null,
-    private children: (string | BasicElement)[]
-  ) {}
+function childToString(item: JSX.Children): string | BasicElement {
+  if (Array.isArray(item))
+    return item.map(childToString).join('')
+  else
+    return item as string | BasicElement
+}
 
-  private isVoid = voidElements.includes(this.elementTag)
+class BasicElement {
+  private isVoid: boolean
   private attributesAsString: string | undefined
+  constructor(
+    private readonly elementTag: string,
+    private readonly attributes: Record<string, unknown> | null,
+    private readonly children: JSX.Children
+  ) {
+    this.isVoid = voidElements.includes(this.elementTag)
+  }
+
 
   private getAttributes() {
     if (this.attributesAsString === undefined) {
@@ -39,15 +46,15 @@ class BasicElement implements ResponseProvider {
             const value1 = value
             const value2 =
               name === 'class'
-                ? typeof (this.attributes as any).className !== 'undefined'
-                  ? (this.attributes as any).className
+                ? typeof (this.attributes as Record<string, unknown>).className !== 'undefined'
+                  ? (this.attributes as Record<string, unknown>).className
                   : ''
-                : typeof (this.attributes as any).class !== 'undefined'
-                ? (this.attributes as any).class
+                : typeof (this.attributes as Record<string, unknown>).class !== 'undefined'
+                ? (this.attributes as Record<string, unknown>).class
                 : ''
 
-            const classes = (Array.isArray(value1) ? value1 : value1.split(/ +/g))
-              .concat(Array.isArray(value2) ? value2 : value2.split(/ +/g))
+            const classes = (Array.isArray(value1) ? value1 : String(value1).split(/ +/g))
+              .concat(Array.isArray(value2) ? value2 : String(value2).split(/ +/g))
               .filter(Boolean)
 
             this.attributesAsString += ` class="${classes.join(' ')}"`
@@ -84,32 +91,22 @@ class BasicElement implements ResponseProvider {
     return this.attributesAsString
   }
 
-  provideResponse(ctx: HandlerContext) {
-    ctx.setHeader('Content-Type', 'text/html')
-    return this.toString()
-  }
-
   toString() {
     if (this.isVoid) {
       return `<${this.elementTag}${this.getAttributes()}>`
     } else {
-      return `<${this.elementTag}${this.getAttributes()}>${this.children.join('')}</${this.elementTag}>`
+      return `<${this.elementTag}${this.getAttributes()}>${childToString(this.children)}</${this.elementTag}>`
     }
   }
 }
-class FragmentElement implements ResponseProvider {
-  constructor(private elements: (string | BasicElement)[]) {}
-
-  provideResponse(ctx: HandlerContext) {
-    ctx.headers.append('Content-Type', 'text/html')
-    return this.toString()
-  }
+class FragmentElement {
+  constructor(private readonly elements: JSX.Children) {}
 
   toString() {
-    return this.elements.join('')
+    return childToString(this.elements)
   }
 }
-class Component<Props = { [name: string]: any }> {
+class Component<Props = { [name: string]: Record<string, unknown> }> {
   constructor(public props: Props) {}
   render(): BasicElement | BasicElement[] {
     throw new Error('not implemented')
@@ -119,18 +116,18 @@ class Component<Props = { [name: string]: any }> {
 /**@namespace */
 const React = {
   createElement(
-    element: string | ((...args: any[]) => BasicElement | BasicElement[]) | (new (...args: any[]) => any) | undefined,
-    properties: object,
+    element: string | ((...args: Record<string, unknown>[]) => BasicElement | BasicElement[]) | (new (...args: Record<string, unknown>[]) => Record<string, unknown>) | undefined,
+    properties: Record<string, unknown>,
     ...children: string[]
   ) {
     if (typeof element === 'function') {
-      const props = Object.assign({ children }, Object((element as any).defaultProps), Object(properties))
+      const props = Object.assign({ children }, Object((element as unknown as Record<string, unknown>).defaultProps), Object(properties))
       let result: BasicElement | BasicElement[]
       try {
-        result = (element as (...args: any[]) => BasicElement | BasicElement[])(props)
+        result = (element as (...args: Record<string, unknown>[]) => BasicElement | BasicElement[])(props)
       } catch (e) {
         if (e instanceof TypeError && e.message.includes('Class constructor')) {
-          result = (new (element as new (...args: any[]) => any)(Object(properties)) as Component).render()
+          result = (new (element as new (...args: Record<string,unknown>[]) => Record<string,unknown>)(Object(properties)) as unknown as Component).render()
         } else {
           throw e
         }
@@ -248,6 +245,7 @@ type RelLink =
   | 'external'
   | 'help'
   | 'icon'
+  | 'shortcut icon'
   | 'license'
   | 'manifest'
   | 'modulepreload'
@@ -317,11 +315,13 @@ type TypeMimeType = 'command' | 'checkbox' | 'radio'
 type TypeScript = 'application/javascript' | 'application/ecmascript' | 'module' | string
 type Preload = boolean | 'none' | 'metadata' | 'auto'
 
-type ElementAttrs<T = {}> = GlobalAttributes & ARIAAttributes & T
+type ElementAttrs<T = Record<never, never>> = GlobalAttributes & ARIAAttributes & T
 
 declare global {
   namespace JSX {
+    // deno-lint-ignore no-empty-interface
     interface Element extends BasicElement {}
+    type Children = string | readonly string[] | BasicElement | readonly BasicElement[] | readonly (string | BasicElement)[]
 
     interface IntrinsicElements {
       [element: string]: ElementAttrs
@@ -567,6 +567,7 @@ declare global {
         referrerpolicy?: ReferrerPolicy
         rel?: RelLink
         sizes?: string
+        type?: string
       }>
       /**@deprecated*/
       listing: ElementAttrs
@@ -728,6 +729,7 @@ declare global {
 }
 type BooleanLike = boolean | 'true' | 'false'
 
+// deno-lint-ignore no-empty-interface
 interface CSSRule {}
 
 //#region ARIA
