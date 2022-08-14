@@ -96,6 +96,8 @@ export interface ResponseContext {
   redirectPermanentCompat(location: string): void
 }
 
+type MimeTypeString = `${string}/${string}` | `${string}/*` | `*/*` | keyof typeof mimeTypeShorthands
+
 export interface RequestContext {
 	readonly original: Request
   readonly url: URL
@@ -108,6 +110,13 @@ export interface RequestContext {
   formData(): Promise<FormData>
   text(): Promise<string>
   json<T extends Record<string, unknown> = Record<string, unknown>>(): Promise<T>
+  /** Test if the accept header has any of the defined types and return the one that is most prefered. `false` if none match. */
+  accepts<Types extends readonly MimeTypeString[]>(...type: Types): Types[number] | false
+  /**
+   * Simplify the switch case into an object where the key is the content type to test and the value is the handler
+   * for that content type. `else` must be defined for any other content type that does not appear as a key.
+   */
+  accepting(typesObject: { [K: string]: () => void | Promise<void> } & { else: () => void | Promise<void> }): void | Promise<void>
 }
 
 export interface IncomingRequestContext {
@@ -126,6 +135,18 @@ export interface Application {
   handle(request: Request): Promise<Response>
   serve(options?: ServeInit): Promise<void>
   serve(address: string, options?: Omit<ServeInit, keyof Deno.ListenOptions>): Promise<void>
+}
+
+const mimeTypeShorthands = {
+  json: 'application/json',
+  html: 'text/html',
+  css: 'text/css',
+  js: 'text/javascript',
+  javascript: 'text/javascript',
+  svg: 'image/svg+xml',
+  png: 'image/png',
+  jpeg: 'image/jpeg',
+  jpg: 'image/jpeg',
 }
 
 export function createApp(): Application
@@ -152,6 +173,29 @@ export function createApp(_middlewares?: ApplicationMiddleware[]): Application {
       const reqMiddlewares = middlewares.slice()
       let head = 0
 
+      const accepts = (() => {
+        function calc() {
+          return (req.headers.get('accept') ?? '').split(',').map(it => {
+            const [mimeType, ...paramsS] = it.split(';').map(it => it.trim())
+            return {
+              mimeType,
+              q: 1,
+              ...(paramsS.map(it => it.split('=')).reduce((acc, [name, value]) => {
+                if (name === '') return acc
+                if (isNaN(+value)) acc[name] = value
+                else acc[name] = +value
+                return acc
+              }, {} as Record<string, string | number>))
+            } as {
+              mimeType: MimeTypeString,
+              q: number
+            }
+          }).sort((a, b) => b.q - a.q)
+        }
+        let value: ReturnType<typeof calc>
+        return (): typeof value => value === undefined ? (value = calc()) : value
+      })()
+
       const request: RequestContext = {
 				original: req,
         url: new URL(req.url),
@@ -174,6 +218,33 @@ export function createApp(_middlewares?: ApplicationMiddleware[]): Application {
 				json<T extends unknown = unknown>(): Promise<T> {
 					return req.json()
 				},
+        accepts<Types extends readonly MimeTypeString[]>(...types: Types): Types[number] | false {
+          if (types.length === 0) return false
+          const resolvedTypes = types.map(it => it in mimeTypeShorthands
+            ? [mimeTypeShorthands[it as keyof typeof mimeTypeShorthands].split('/'), it]
+            : [it.split('/'), it]) as [string[], Types[number]][]
+  
+          for (const acceptType of accepts()) {
+            if (acceptType.mimeType === '*/*') return types[0]
+            const [acceptTypeFirst, acceptTypeSecond] = acceptType.mimeType.split('/')
+            for (const [[typeFirst, typeSecond], value] of resolvedTypes) {
+              if (acceptTypeFirst !== typeFirst) continue
+              if (acceptTypeSecond === '*') return value
+              if (acceptTypeSecond === typeSecond) return value
+            }
+          }
+          return false
+        },
+        accepting(obj) {
+          const keys = Object.keys(obj)
+          if (!keys.includes('else')) throw new Error('Must include a handling for anything else that does not match your defined mime types')
+          keys.splice(keys.indexOf('else'), 1)
+          if (keys.length > 0) {
+            const res = request.accepts(...keys as unknown as readonly MimeTypeString[])
+            if (res !== false) return obj[res]()
+          }
+          return obj.else()
+        },
 			}
 
       const response: ResponseContext = {
