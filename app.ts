@@ -88,6 +88,12 @@ export interface ResponseContext {
   formData(data: FormData): void
   text(data: string): void
   eventSource(): ServerEventSource
+  /** Use a temporary redirect (307) to direct the client to a different location. */
+  redirect(location: string): void
+  /** Use a permanent redirect (308) to direct the client to a different location. */
+  redirectPermanent(location: string): void
+  /** Use a permanent redirect (301) to direct the client to a different location. Some very old browsers may not support the 308 status code. */
+  redirectPermanentCompat(location: string): void
 }
 
 export interface RequestContext {
@@ -286,6 +292,18 @@ export function createApp(_middlewares?: ApplicationMiddleware[]): Application {
               }
             }
           }
+        },
+        redirect(location) {
+          response.status = request.method === 'PUT' || request.method === 'POST' ? 303 : 307
+          response.headers.set('Location', location)
+        },
+        redirectPermanent(location) {
+          response.status = request.method === 'PUT' || request.method === 'POST' ? 303 : 308
+          response.headers.set('Location', location)
+        },
+        redirectPermanentCompat(location) {
+          response.status = request.method === 'PUT' || request.method === 'POST' ? 303 : 301
+          response.headers.set('Location', location)
         },
       }
 
