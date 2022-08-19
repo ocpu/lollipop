@@ -513,6 +513,7 @@ declare global {
         capture?: Capture
         checked?: boolean
         dirname?: string
+        name?: string
         disabled?: boolean
         form?: string
         formenctype?: EncType
