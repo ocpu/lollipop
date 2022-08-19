@@ -1,5 +1,6 @@
-import type { ServeInit } from "https://deno.land/std@0.151.0/http/server.ts"
-import { deferred, Deferred } from "https://deno.land/std@0.151.0/async/mod.ts"
+import type { ServeInit } from "https://deno.land/std@0.152.0/http/server.ts"
+import { deferred, Deferred } from "https://deno.land/std@0.152.0/async/mod.ts"
+import { accepts } from "https://deno.land/std@0.152.0/http/negotiation.ts";
 
 declare global {
   namespace Lollipop {
@@ -173,29 +174,6 @@ export function createApp(_middlewares?: ApplicationMiddleware[]): Application {
       const reqMiddlewares = middlewares.slice()
       let head = 0
 
-      const accepts = (() => {
-        function calc() {
-          return (req.headers.get('accept') ?? '').split(',').map(it => {
-            const [mimeType, ...paramsS] = it.split(';').map(it => it.trim())
-            return {
-              mimeType,
-              q: 1,
-              ...(paramsS.map(it => it.split('=')).reduce((acc, [name, value]) => {
-                if (name === '') return acc
-                if (isNaN(+value)) acc[name] = value
-                else acc[name] = +value
-                return acc
-              }, {} as Record<string, string | number>))
-            } as {
-              mimeType: MimeTypeString,
-              q: number
-            }
-          }).sort((a, b) => b.q - a.q)
-        }
-        let value: ReturnType<typeof calc>
-        return (): typeof value => value === undefined ? (value = calc()) : value
-      })()
-
       const request: RequestContext = {
 				original: req,
         url: new URL(req.url),
@@ -219,21 +197,7 @@ export function createApp(_middlewares?: ApplicationMiddleware[]): Application {
 					return req.json()
 				},
         accepts<Types extends readonly MimeTypeString[]>(...types: Types): Types[number] | false {
-          if (types.length === 0) return false
-          const resolvedTypes = types.map(it => it in mimeTypeShorthands
-            ? [mimeTypeShorthands[it as keyof typeof mimeTypeShorthands].split('/'), it]
-            : [it.split('/'), it]) as [string[], Types[number]][]
-  
-          for (const acceptType of accepts()) {
-            if (acceptType.mimeType === '*/*') return types[0]
-            const [acceptTypeFirst, acceptTypeSecond] = acceptType.mimeType.split('/')
-            for (const [[typeFirst, typeSecond], value] of resolvedTypes) {
-              if (acceptTypeFirst !== typeFirst) continue
-              if (acceptTypeSecond === '*') return value
-              if (acceptTypeSecond === typeSecond) return value
-            }
-          }
-          return false
+          return (accepts(request.original, ...types) ?? false) as Types[number] | false
         },
         accepting(obj) {
           const keys = Object.keys(obj)
