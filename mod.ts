@@ -6,7 +6,7 @@ import { serveFile } from "https://deno.land/std@0.152.0/http/file_server.ts"
 
 export { createApp, setupApplictionsForTest } from './app.ts'
 export { createRouter } from './router.ts'
-export * as React from './basic-jsx.ts'
+export { default as React, default as h } from './basic-jsx.ts'
 export type { ApplicationMiddleware, ApplicationMiddlewareFunction, Application, IApplicationMiddleware, IncomingRequestContext, RequestContext, ResponseContext, TestSetup } from './app.ts'
 export type { CreateRouterOptions, IncomingRequestRouteContext, RouteHandler, Router } from './router.ts'
 
