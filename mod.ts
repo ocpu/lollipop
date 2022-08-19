@@ -1,5 +1,5 @@
 import HTTPError from './HTTPError.ts'
-import { ApplicationMiddlewareFunction, IncomingRequestContext, createApp, RequestContext, ResponseContext } from "./app.ts";
+import { ApplicationMiddlewareFunction, IncomingRequestContext, createApp, RequestContext, ResponseContext, ApplicationMiddleware } from "./app.ts";
 import { createRouter, RouteHandler } from "./router.ts";
 import * as Path from "https://deno.land/std@0.152.0/path/mod.ts"
 import { serveFile } from "https://deno.land/std@0.152.0/http/file_server.ts"
@@ -19,8 +19,12 @@ type RoutesDefinition<BasePath extends string, Def extends RoutesDefinition<Base
   [K in keyof Def]: K extends string ? RouteHandler<K, BasePath> : never
 }
 
-export function serve<RoutesDef extends RoutesDefinition<string, RoutesDef>>(routesDef: RoutesDef): Promise<void> {
-  return createApp().use(createRouter().routes(routesDef)).serve()
+export function serve<RoutesDef extends RoutesDefinition<string, RoutesDef>>(routesDef: RoutesDef): Promise<void>
+export function serve<RoutesDef extends RoutesDefinition<string, RoutesDef>>(middlewares: ApplicationMiddleware[], routesDef: RoutesDef): Promise<void>
+export function serve<RoutesDef extends RoutesDefinition<string, RoutesDef>>(...args: [routesDef: RoutesDef] | [middlewares: ApplicationMiddleware[], routesDef: RoutesDef]): Promise<void> {
+  const routesDef = Array.isArray(args[0]) ? args[1] : args[0]
+  const middlewares = Array.isArray(args[0]) ? args[0] : []
+  return createApp(middlewares).use(createRouter().routes(routesDef)).serve()
 }
 
 /**
