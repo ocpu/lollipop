@@ -1,4 +1,4 @@
-import type { IApplicationMiddleware, RequestContext, ResponseContext } from './app.ts'
+import type { IApplicationMiddleware, IncomingRequestContext } from './app.ts'
 
 /**
  * Takes a path spec and an optional base path and resolves all parameter names
@@ -35,8 +35,8 @@ type ResolveParams<
 	: Record<string, unknown>
 
 export interface IncomingRequestRouteContext<Path extends string, BasePath extends string = string> {
-	readonly request: RequestContext
-	readonly response: ResponseContext
+	readonly request: IncomingRequestContext['request']
+	readonly response: IncomingRequestContext['response']
 	readonly params: Readonly<ResolveParams<Path, BasePath>>
 }
 
