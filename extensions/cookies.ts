@@ -338,7 +338,7 @@ function parseHTTPDate(string: string, startIndex = 0): { date: Date; read: numb
 	return { date, read: lastValuableIndex + 14 - startIndex }
 }
 
-export default function cookies(): ApplicationMiddlewareFunction {
+export default function configureCookies(): ApplicationMiddlewareFunction {
 	return async (ctx: IncomingRequestContext) => {
 		//@ts-ignore Has to provide the value
 		ctx.request.cookies = Object.fromEntries(
@@ -371,6 +371,6 @@ export default function cookies(): ApplicationMiddlewareFunction {
 
 			return cookie
 		}
-		await ctx.next()
+		return await ctx.next()
 	}
 }
