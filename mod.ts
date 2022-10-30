@@ -1,6 +1,7 @@
 import HTTPError from './HTTPError.ts'
 import { createApp, ApplicationMiddleware, IncomingRequestContext, ApplicationMiddlewareFunction } from './app.ts'
 import { createRouter, IncomingRequestRouteContext, RouteHandler } from './router.ts'
+import { CORSConfig } from './ext_cors_shadow.ts'
 import { ServeDirectoryOptions } from './ext_static_shadow.ts'
 import { HeaderBuilderFunction } from './ext_default_headers_shadow.ts'
 import { CookieAttributes } from './ext_cookies_shadow.ts'
@@ -21,6 +22,7 @@ export type {
 } from './app.ts'
 export type { CreateRouterOptions, IncomingRequestRouteContext, RouteHandler, Router } from './router.ts'
 
+export type { CORSConfig } from './ext_cors_shadow.ts'
 export type { ServeDirectoryOptions } from './ext_static_shadow.ts'
 export type { HeaderBuilderFunction } from './ext_default_headers_shadow.ts'
 export type { CookieAttributes } from './ext_cookies_shadow.ts'
@@ -79,6 +81,10 @@ export async function serveDirectory(
  */
 export async function websocket(handler: (websocket: WebSocket) => void | Promise<void>): Promise<AppOrRouterMiddlewareFunction> {
 	return (await import('./extensions/websocket.ts')).websocket(handler)
+}
+
+export async function cors(configure?: (config: CORSConfig) => unknown | Promise<unknown>): Promise<ApplicationMiddleware> {
+	return (await import('./extensions/cors.ts')).cors(configure)
 }
 
 export async function configureDefaultHeaders(headers: HeadersInit | HeaderBuilderFunction): Promise<ApplicationMiddleware> {
