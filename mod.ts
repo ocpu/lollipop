@@ -89,6 +89,10 @@ export async function configureCookies(): Promise<ApplicationMiddleware> {
 	return (await import('./extensions/cookies.ts')).default()
 }
 
+export async function configureCSRF(options?: { cookie?: (CookieAttributes & { name?: string }) | string }): Promise<ApplicationMiddleware> {
+	return (await import('./extensions/csrf-token.ts')).default(options)
+}
+
 export async function configureTemplating(options: TemplatingOptions): Promise<ApplicationMiddlewareFunction> {
 	return (await import('./extensions/templating.ts')).default(options)
 }
