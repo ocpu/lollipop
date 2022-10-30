@@ -24,10 +24,18 @@ function isRouteContext(ctx: IncomingRequestContext | IncomingRequestRouteContex
 	path: string | URL,
 	options?: ServeDirectoryOptions & { baseURL?: string }
 ) {
-	const fsBasePath = path instanceof URL ? path : new URL('file://' + path)
+	const fsBasePath = path instanceof URL
+		? path
+		: /^\w+:\/\//.test(path)
+			? new URL(path)
+			: new URL('file://' + path)
 
 	if (fsBasePath.protocol !== 'file:') {
 		throw new Error('The provided URL is not local')
+	}
+
+	if (!fsBasePath.pathname.endsWith('/')) {
+		fsBasePath.pathname += '/'
 	}
 
 	if ((await Deno.permissions.query({ name: 'read', path: path })).state !== 'granted') {
