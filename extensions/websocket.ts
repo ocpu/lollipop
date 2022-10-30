@@ -11,7 +11,7 @@ export function errorUnauthorized(message?: string, cause?: Error): HTTPError {
 }
 
 function isRouteContext(ctx: IncomingRequestContext | IncomingRequestRouteContext<string>): ctx is IncomingRequestRouteContext<string> {
-	return 'next' in ctx
+	return !('next' in ctx)
 }
 
 export function websocket(handler: (websocket: WebSocket) => void | Promise<void>) {

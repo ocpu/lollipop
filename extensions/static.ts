@@ -11,7 +11,7 @@ export interface ServeDirectoryOptions {
 }
 
 function isRouteContext(ctx: IncomingRequestContext | IncomingRequestRouteContext<string>): ctx is IncomingRequestRouteContext<string> {
-	return 'next' in ctx
+	return !('next' in ctx)
 }
 
 /**
