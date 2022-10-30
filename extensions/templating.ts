@@ -35,14 +35,14 @@ type TemplatingOptions = {
 	readonly engines: readonly RenderEngine[]
 }
 
-export default function templating({ views, engines }: TemplatingOptions): ApplicationMiddlewareFunction {
+export default function configureTemplating({ views, engines }: TemplatingOptions): ApplicationMiddlewareFunction {
 	return async ctx => {
 		ctx.response.render = async function render(template: string, params: Record<string, unknown>) {
 			const result = await createResult({ views, engines }, template, params ?? {})
 			ctx.response.html(result.result)
 		}
 
-		await ctx.next()
+		return await ctx.next()
 	}
 }
 

@@ -1,8 +1,9 @@
 import HTTPError from './HTTPError.ts'
-import { createApp, ApplicationMiddleware, IncomingRequestContext } from './app.ts'
+import { createApp, ApplicationMiddleware, IncomingRequestContext, ApplicationMiddlewareFunction } from './app.ts'
 import { createRouter, IncomingRequestRouteContext, RouteHandler } from './router.ts'
 import { ServeDirectoryOptions } from './ext_static_shadow.ts'
 import { CookieAttributes } from './ext_cookies_shadow.ts'
+import { TemplatingOptions } from './ext_templating_shadow.ts'
 
 export { createApp, setupApplictionsForTest } from './app.ts'
 export { createRouter } from './router.ts'
@@ -21,6 +22,7 @@ export type { CreateRouterOptions, IncomingRequestRouteContext, RouteHandler, Ro
 
 export type { ServeDirectoryOptions } from './ext_static_shadow.ts'
 export type { CookieAttributes } from './ext_cookies_shadow.ts'
+export type { TemplatingOptions } from './ext_templating_shadow.ts'
 
 type RoutesDefinition<BasePath extends string, Def extends RoutesDefinition<BasePath, Def>> = {
 	[K in keyof Def]: K extends string ? RouteHandler<K, BasePath> : never
@@ -79,4 +81,8 @@ export async function websocket(handler: (websocket: WebSocket) => void | Promis
 
 export async function configureCookies(): Promise<ApplicationMiddleware> {
 	return (await import('./extensions/cookies.ts')).default()
+}
+
+export async function configureTemplating(options: TemplatingOptions): Promise<ApplicationMiddlewareFunction> {
+	return (await import('./extensions/templating.ts')).default(options)
 }
