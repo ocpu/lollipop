@@ -91,33 +91,40 @@ function isRouteContext(ctx: IncomingRequestContext | IncomingRequestRouteContex
 			fsPath = new URL(path.pathname + reqPath.replace(/\/$/, ''), path)
 		}
 
+		let stat: Deno.FileInfo | undefined
 		try {
-			const stat = await Deno.stat(fsPath)
-			if (stat.isDirectory) {
-				if (directoryListing !== undefined) {
-					return await directoryListing({
-						isRoot:
-							typeof fsPath === 'string'
-								? typeof path === 'string'
-									? fsPath === path
-									: fsPath === path.pathname
-								: typeof path === 'string'
-								? fsPath.pathname === path
-								: fsPath.pathname === path.pathname,
-						fileSystemPath: fsPath,
-						request: ctx.request,
-						response: ctx.response,
-					})
-				}
-			} else if (stat.isFile) {
-				const res = await serveFile(ctx.request.original, typeof fsPath === 'string' ? fsPath : fsPath.pathname, {
-					fileInfo: stat,
-				})
-				ctx.response.from(res)
-			}
+			stat = await Deno.stat(fsPath)
 		} catch {
-			throw new Error(`${path} does not exist`)
+			if (isRouteContext(ctx)) {
+				ctx.response.status = 404
+				return
+			} else return await ctx.next()
 		}
+
+		if (stat.isDirectory) {
+			if (directoryListing !== undefined) {
+				return await directoryListing({
+					isRoot:
+						typeof fsPath === 'string'
+							? typeof path === 'string'
+								? fsPath === path || fsPath === path + '/'
+								: fsPath === path.pathname || fsPath === path.pathname + '/'
+							: typeof path === 'string'
+							? fsPath.pathname === path || fsPath.pathname === path + '/'
+							: fsPath.pathname === path.pathname || fsPath.pathname === path.pathname + '/',
+					fileSystemPath: fsPath,
+					request: ctx.request,
+					response: ctx.response,
+				})
+			}
+		} else if (stat.isFile) {
+			const res = await serveFile(ctx.request.original, typeof fsPath === 'string' ? fsPath : fsPath.pathname, {
+				fileInfo: stat,
+			})
+			ctx.response.from(res)
+			return
+		}
+
 		if (isRouteContext(ctx)) ctx.response.status = 404
 		else return await ctx.next()
 	}
