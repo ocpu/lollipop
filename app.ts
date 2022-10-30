@@ -22,9 +22,10 @@ let applicationToServingAddressMap: Map<Required<Deno.ListenOptions>, Applicatio
 export interface TestSetup {
 	resolveRequest(request: Request): Promise<Response>
 	resolveRequest(selector: Application | Deno.ListenOptions | string, request: Request): Promise<Response>
+  fetch(input: string | URL | Request, init?: RequestInit): Promise<Response>
 }
 
-export async function setupApplictionsForTest(startApplication?: () => Promise<void>): Promise<TestSetup> {
+export async function setupApplictionsForTest(startApplication?: () => Promise<unknown>): Promise<TestSetup> {
 	const apps: Application[] = []
 	const appToServingAddressMap = new Map<Required<Deno.ListenOptions>, Application>()
 
@@ -36,7 +37,8 @@ export async function setupApplictionsForTest(startApplication?: () => Promise<v
 	applicationToServingAddressMap = undefined
 	applications = undefined
 
-	return {
+  let setup: TestSetup
+	return setup = {
 		async resolveRequest(
 			...args: [selector: Application | Deno.ListenOptions | string, request: Request] | [request: Request]
 		) {
@@ -69,6 +71,9 @@ export async function setupApplictionsForTest(startApplication?: () => Promise<v
 				throw new Error(`Could not find app listening on ${selector.hostname ?? ''}:${selector.port}`)
 			}
 		},
+    fetch(input, init) {
+      return setup.resolveRequest(new Request(input, init))
+    }
 	}
 }
 
