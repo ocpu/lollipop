@@ -2,6 +2,7 @@ import HTTPError from './HTTPError.ts'
 import { createApp, ApplicationMiddleware, IncomingRequestContext, ApplicationMiddlewareFunction } from './app.ts'
 import { createRouter, IncomingRequestRouteContext, RouteHandler } from './router.ts'
 import { ServeDirectoryOptions } from './ext_static_shadow.ts'
+import { HeaderBuilderFunction } from './ext_default_headers_shadow.ts'
 import { CookieAttributes } from './ext_cookies_shadow.ts'
 import { TemplatingOptions } from './ext_templating_shadow.ts'
 
@@ -21,6 +22,7 @@ export type {
 export type { CreateRouterOptions, IncomingRequestRouteContext, RouteHandler, Router } from './router.ts'
 
 export type { ServeDirectoryOptions } from './ext_static_shadow.ts'
+export type { HeaderBuilderFunction } from './ext_default_headers_shadow.ts'
 export type { CookieAttributes } from './ext_cookies_shadow.ts'
 export type { TemplatingOptions } from './ext_templating_shadow.ts'
 
@@ -77,6 +79,10 @@ export async function serveDirectory(
  */
 export async function websocket(handler: (websocket: WebSocket) => void | Promise<void>): Promise<AppOrRouterMiddlewareFunction> {
 	return (await import('./extensions/websocket.ts')).websocket(handler)
+}
+
+export async function configureDefaultHeaders(headers: HeadersInit | HeaderBuilderFunction): Promise<ApplicationMiddleware> {
+	return (await import('./extensions/default-headers.ts')).default(headers)
 }
 
 export async function configureCookies(): Promise<ApplicationMiddleware> {
