@@ -4,35 +4,48 @@ import type { IApplicationMiddleware, IncomingRequestContext } from './app.ts'
  * Takes a path spec and an optional base path and resolves all parameter names
  */
 type ResolveParams<
-	P extends string,
+	Path extends string,
 	BasePath extends string | undefined = undefined
-> = P extends `${string} ${infer Path}`
-	? ResolveParams<Path, BasePath>
-	: P extends `/:${infer Param}/${infer Rest}`
-	? ResolveParams<Rest, BasePath> extends Record<string, string>
-		? Record<Param | keyof ResolveParams<Rest, BasePath>, string>
-		: Record<Param, string>
-	: P extends `/:${infer Param}`
-	? BasePath extends string
-		? ResolveParams<BasePath> extends Record<string, string>
-			? Record<Param | keyof ResolveParams<BasePath>, string>
-			: Record<Param, string>
-		: Record<Param, string>
-	: P extends `:${infer Param}`
-	? BasePath extends string
-		? ResolveParams<BasePath> extends Record<string, string>
-			? Record<Param | keyof ResolveParams<BasePath>, string>
-			: Record<Param, string>
-		: Record<Param, string>
-	: P extends `/${infer PS}/${infer Rest}`
-	? ResolveParams<Rest, BasePath>
-	: P extends `/${infer PS}`
-	? BasePath extends string
-		? ResolveParams<BasePath>
-		: Record<string, unknown>
+> = Record<
+	ResolvePathParams<GetPathParts<Path, BasePath>>[number],
+	string
+>
+type GetPathParts<
+	Path extends string,
+	BasePath extends string | undefined = undefined
+> = Path extends `${string} ${infer Rest}`
+	? GetPathParts<Rest, BasePath>
 	: BasePath extends string
-	? ResolveParams<BasePath>
-	: Record<string, unknown>
+	? GetPathParts<`${BasePath}/${Path}`>
+	: Path extends `${infer Part}/${infer Rest}`
+	? Part extends ``
+		? GetPathParts<Rest>
+		: [Part, ...GetPathParts<Rest>]
+	: Path extends ``
+	? []
+	: [Path]
+type ResolvePathParams<
+	Parts extends string[],
+	Star extends number = 0
+> = Parts extends [infer Item, ...infer Rest extends string[]]
+	? Item extends `:${infer Param}*`
+		? [Param, ...ResolvePathParams<Rest, Star>]
+		: Item extends `:${infer Param}`
+			? [Param, ...ResolvePathParams<Rest, Star>]
+			: Item extends `*`
+				? [Star, ...ResolvePathParams<Rest, NextStar<Star>>]
+				: ResolvePathParams<Rest, Star>
+	: []
+type NextStar<Star extends number> =
+	| Star extends 0 ? 1 :
+	Star extends 1 ? 2 :
+	Star extends 2 ? 3 :
+	Star extends 3 ? 4 :
+	Star extends 4 ? 5 :
+	Star extends 5 ? 6 :
+	Star extends 6 ? 7 :
+	Star extends 7 ? 8 :
+	never
 
 export interface IncomingRequestRouteContext<Path extends string, BasePath extends string = string> {
 	readonly request: IncomingRequestContext['request']
@@ -86,10 +99,9 @@ export function createRouter<BasePath extends string>(options?: CreateRouterOpti
 					  })() as never)
 			routes.push({
 				method,
-				url: new URLPattern(
-					options?.baseURL !== undefined ? combinePaths(options.baseURL, path) : path,
-					'http://localhost'
-				),
+				url: new URLPattern({
+					pathname: options?.baseURL !== undefined ? combinePaths(options.baseURL, path) : path,
+				}),
 				handler: handler as unknown as RouteHandler,
 			})
 			return self
@@ -103,7 +115,7 @@ export function createRouter<BasePath extends string>(options?: CreateRouterOpti
 		async doHandleRequest(ctx) {
 			for (const route of routes) {
 				if (!(route.method === 'ANY' || route.method === ctx.request.method)) continue
-				const match = route.url.exec(ctx.request.url.pathname, 'http://localhost')
+				const match = route.url.exec(ctx.request.url)
 				if (match === null) continue
 				route.handler({
 					params: match.pathname.groups,
