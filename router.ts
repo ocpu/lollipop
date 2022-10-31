@@ -117,14 +117,13 @@ export function createRouter<BasePath extends string>(options?: CreateRouterOpti
 				if (!(route.method === 'ANY' || route.method === ctx.request.method)) continue
 				const match = route.url.exec(ctx.request.url)
 				if (match === null) continue
-				route.handler({
+				return await route.handler({
 					params: match.pathname.groups,
 					request: ctx.request,
 					response: ctx.response,
 				})
-				return
 			}
-			await ctx.next()
+			return await ctx.next()
 		},
 	}
 
