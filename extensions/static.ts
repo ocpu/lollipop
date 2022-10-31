@@ -118,7 +118,7 @@ function isRouteContext(ctx: IncomingRequestContext | IncomingRequestRouteContex
 				})
 			}
 		} else if (stat.isFile) {
-			const res = await serveFile(ctx.request.original, typeof fsPath === 'string' ? fsPath : fsPath.pathname, {
+			const res = await serveFile(ctx.request.original, typeof fsPath === 'string' ? fsPath : decodeURIComponent(fsPath.pathname), {
 				fileInfo: stat,
 			})
 			ctx.response.from(res)
