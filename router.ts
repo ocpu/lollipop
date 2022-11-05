@@ -53,10 +53,21 @@ export interface IncomingRequestRouteContext<Path extends string, BasePath exten
 	readonly params: Readonly<ResolveParams<Path, BasePath>>
 }
 
+export interface IncomingRequestRouteMiddlewareContext<Path extends string, BasePath extends string = string> {
+	readonly request: IncomingRequestContext['request']
+	readonly response: IncomingRequestContext['response']
+	readonly params: Readonly<ResolveParams<Path, BasePath>>
+	next(): Promise<void>
+	skip(...args: Parameters<IncomingRequestContext['next']>): ReturnType<IncomingRequestContext['next']>
+}
+
 type Awaitable<T> = T | Promise<T>
 export type RouteHandler<Path extends string = string, BasePath extends string = string> = (
 	ctx: IncomingRequestRouteContext<Path, BasePath>
 ) => Awaitable<void>
+export type RouteMiddleware<Path extends string = string, BasePath extends string = string> = (
+	ctx: IncomingRequestRouteMiddlewareContext<Path, BasePath>
+) => Promise<void>
 
 type RoutesDefinition<BasePath extends string, Def extends RoutesDefinition<BasePath, Def>> = {
 	[K in keyof Def]: K extends string ? RouteHandler<K, BasePath> : never
@@ -64,7 +75,9 @@ type RoutesDefinition<BasePath extends string, Def extends RoutesDefinition<Base
 
 export interface Router<BasePath extends string = ''> extends IApplicationMiddleware {
 	route<Path extends string>(method: string, path: Path, handler: RouteHandler<Path, BasePath>): Router<BasePath>
+	route<Path extends string>(method: string, path: Path, middleware: RouteMiddleware<Path, BasePath>[], handler: RouteHandler<Path, BasePath>): Router<BasePath>
 	route<Path extends string>(methodAndPath: Path, handler: RouteHandler<Path, BasePath>): Router<BasePath>
+	route<Path extends string>(methodAndPath: Path, middlewares: RouteMiddleware<Path, BasePath>[], handler: RouteHandler<Path, BasePath>): Router<BasePath>
 	routes<RoutesDef extends RoutesDefinition<BasePath, RoutesDef>>(routesDef: RoutesDef): Router<BasePath>
 }
 
@@ -81,29 +94,16 @@ export interface CreateRouterOptions<BasePath extends string> {
 }
 
 export function createRouter<BasePath extends string>(options?: CreateRouterOptions<BasePath>): Router<BasePath> {
-	const routes: { method: string; url: URLPattern; handler: RouteHandler }[] = []
+	const handlers: ((ctx: IncomingRequestContext) => Promise<void>)[] = []
 	const self: Router<BasePath> = {
 		route<Path extends string>(
 			...args:
 				| [method: string, path: Path, handler: RouteHandler<Path, BasePath>]
+				| [method: string, path: Path, middlewares: RouteMiddleware<Path, BasePath>[], handler: RouteHandler<Path, BasePath>]
 				| [methodAndPath: Path, handler: RouteHandler<Path, BasePath>]
+				| [methodAndPath: Path, middlewares: RouteMiddleware<Path, BasePath>[], handler: RouteHandler<Path, BasePath>]
 		): Router<BasePath> {
-			const [_method, _path, _handler] = args
-			const [method, path, handler]: [string, string, RouteHandler<Path, BasePath>] =
-				typeof _method === 'string' && typeof _path === 'function'
-					? [...resolveMethodAndPath(_method), _path]
-					: typeof _method === 'string' && typeof _path === 'string' && typeof _handler === 'function'
-					? [_method, _path, _handler]
-					: ((() => {
-							throw new Error('Illegal arguments')
-					  })() as never)
-			routes.push({
-				method,
-				url: new URLPattern({
-					pathname: options?.baseURL !== undefined ? combinePaths(options.baseURL, path) : path,
-				}),
-				handler: handler as unknown as RouteHandler,
-			})
+			handlers.push(createMethodAndPathAndHandlerPair<Path, BasePath>(args)(options?.baseURL))
 			return self
 		},
 		routes<RoutesDef extends RoutesDefinition<BasePath, RoutesDef>>(routesDef: RoutesDef): Router<BasePath> {
@@ -113,42 +113,118 @@ export function createRouter<BasePath extends string>(options?: CreateRouterOpti
 			return self
 		},
 		async doHandleRequest(ctx) {
-			for (const route of routes) {
-				if (!(route.method === 'ANY' || route.method === ctx.request.method)) continue
-				const match = route.url.exec(ctx.request.url)
-				if (match === null) continue
-				return await route.handler({
-					params: match.pathname.groups,
-					request: ctx.request,
-					response: ctx.response,
-				})
+			const reqHandlers = handlers.slice()
+			let head = 0
+
+			const context = {
+				request: ctx.request,
+				response: ctx.response,
+				async next() {
+					const reqHandler = reqHandlers[head++]
+					if (reqHandler === undefined) {
+						return await ctx.next()
+					}
+					return await reqHandler(context)
+				},
 			}
-			return await ctx.next()
+			return await context.next()
 		},
 	}
 
 	return self
+}
 
-	function resolveMethodAndPath(methodAndOrPath: string) {
-		const spaceIdx = methodAndOrPath.indexOf(' ')
-		if (spaceIdx === -1) return ['ANY', methodAndOrPath] as const
-		else {
-			const method = methodAndOrPath.slice(0, spaceIdx).trim()
-			const path = methodAndOrPath.slice(spaceIdx + 1).trim()
-			return [method === '*' ? 'ANY' : method.toUpperCase(), path.trim()] as const
-		}
+function createMethodAndPathAndHandlerPair<Path extends string, BasePath extends string>(
+	args:
+		| [method: string, path: Path, handler: RouteHandler<Path, BasePath>]
+		| [method: string, path: Path, middlewares: RouteMiddleware<Path, BasePath>[], handler: RouteHandler<Path, BasePath>]
+		| [methodAndPath: Path, handler: RouteHandler<Path, BasePath>]
+		| [methodAndPath: Path, middlewares: RouteMiddleware<Path, BasePath>[], handler: RouteHandler<Path, BasePath>]
+): (baseURL: BasePath | undefined) => (ctx: IncomingRequestContext) => Promise<void> {
+	if (args.length === 2) return createHandler(...resolveMethodAndPath(args[0]), args[1], [])
+	if (args.length === 3 && Array.isArray(args[1])) return createHandler(...resolveMethodAndPath(args[0]), args[2], args[1])
+	if (args.length === 3 && !Array.isArray(args[1])) return createHandler(args[0], args[1], args[2], [])
+	if (args.length === 4) return createHandler(args[0], args[1], args[3], args[2])
+	throw new Error('Illegal method signature')
+}
+
+function resolveMethodAndPath(methodAndOrPath: string) {
+	const spaceIdx = methodAndOrPath.indexOf(' ')
+	if (spaceIdx === -1) return ['ANY', methodAndOrPath] as const
+	else {
+		const method = methodAndOrPath.slice(0, spaceIdx).trim()
+		const path = methodAndOrPath.slice(spaceIdx + 1).trim()
+		return [method === '*' ? 'ANY' : method.toUpperCase(), path.trim()] as const
 	}
+}
 
-	function combinePaths<A extends string, B extends string>(a: A, b: B): MergePath<A, B> {
-		if ((a.endsWith('/') && !b.startsWith('/')) || (!a.endsWith('/') && b.startsWith('/'))) {
-			// 1 0 | 0 1
-			return (a + b) as MergePath<A, B>
-		} else if (a.endsWith('/') && b.startsWith('/')) {
-			// 1 1
-			return (a + b.substring(1)) as MergePath<A, B>
+function combinePaths<A extends string, B extends string>(a: A, b: B): MergePath<A, B> {
+	if ((a.endsWith('/') && !b.startsWith('/')) || (!a.endsWith('/') && b.startsWith('/'))) {
+		// 1 0 | 0 1
+		return (a + b) as MergePath<A, B>
+	} else if (a.endsWith('/') && b.startsWith('/')) {
+		// 1 1
+		return (a + b.substring(1)) as MergePath<A, B>
+	} else {
+		// 0 0
+		return (a + '/' + b) as MergePath<A, B>
+	}
+}
+
+function createHandler<Path extends string, BasePath extends string>(
+	method: string,
+	path: Path, 
+	handler: RouteHandler<Path, BasePath>,
+	middlewares: RouteMiddleware<Path, BasePath>[]
+): (baseURL: BasePath | undefined) => (ctx: IncomingRequestContext) => Promise<void> {
+	return baseURL => {
+		const url = new URLPattern({
+			pathname: baseURL !== undefined ? combinePaths(baseURL, path) : path,
+		})
+		if (method === 'ANY') {
+			return async ctx => {
+				const match = url.exec(ctx.request.url)
+				if (match === null) return await ctx.next()
+				if (middlewares.length !== 0) return await doHandle(ctx, match)
+				else return await handler(createHandlerContext(ctx, match))
+			}
 		} else {
-			// 0 0
-			return (a + '/' + b) as MergePath<A, B>
+			return async ctx => {
+				if (method !== ctx.request.method) return await ctx.next()
+				const match = url.exec(ctx.request.url)
+				if (match === null) return await ctx.next()
+				if (middlewares.length !== 0) return await doHandle(ctx, match)
+				else return await handler(createHandlerContext(ctx, match))
+			}
+		}
+
+		function createHandlerContext(ctx: IncomingRequestContext, match: URLPatternResult): IncomingRequestRouteContext<Path, BasePath> {
+			return {
+				params: match.pathname.groups,
+				request: ctx.request,
+				response: ctx.response,
+			}
+		}
+
+		async function doHandle(ctx: IncomingRequestContext, match: URLPatternResult) {
+			const reqMiddlewares = middlewares.slice()
+			let head = 0
+
+			const context: IncomingRequestRouteMiddlewareContext<Path, BasePath> = {
+				params: match.pathname.groups,
+				request: ctx.request,
+				response: ctx.response,
+				skip: ctx.next,
+				async next() {
+					const reqMiddleware = reqMiddlewares[head++]
+					if (reqMiddleware === undefined) {
+						return await handler(createHandlerContext(ctx, match))
+					}
+					return await reqMiddleware(context)
+				},
+			}
+
+			return await context.next()
 		}
 	}
 }

@@ -20,7 +20,14 @@ export type {
 	ResponseContext,
 	TestSetup,
 } from './app.ts'
-export type { CreateRouterOptions, IncomingRequestRouteContext, RouteHandler, Router } from './router.ts'
+export type {
+	CreateRouterOptions,
+	IncomingRequestRouteContext,
+	RouteHandler,
+	IncomingRequestRouteMiddlewareContext,
+	RouteMiddleware,
+	Router,
+} from './router.ts'
 
 export type { CORSConfig } from './ext_cors_shadow.ts'
 export type { ServeDirectoryOptions } from './ext_static_shadow.ts'
