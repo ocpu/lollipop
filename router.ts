@@ -86,8 +86,8 @@ export type MergePath<A extends string, B extends string> = A extends `${infer A
 		? `${ABase}/${BBase}`
 		: `${ABase}/${B}`
 	: B extends `/${infer BBase}`
-	? `${A}/${BBase}`
-	: `${A}/${B}`
+		? `${A}/${BBase}`
+		: `${A}/${B}`
 
 export interface CreateRouterOptions<BasePath extends string> {
 	baseURL?: BasePath | undefined
@@ -178,9 +178,8 @@ function createHandler<Path extends string, BasePath extends string>(
 	middlewares: RouteMiddleware<Path, BasePath>[]
 ): (baseURL: BasePath | undefined) => (ctx: IncomingRequestContext) => Promise<void> {
 	return baseURL => {
-		const url = new URLPattern({
-			pathname: baseURL !== undefined ? combinePaths(baseURL, path) : path,
-		})
+		const pathname = baseURL !== undefined ? path === '' ? baseURL : combinePaths(baseURL, path) : path
+		const url = new URLPattern({ pathname })
 		if (method === 'ANY') {
 			return async ctx => {
 				const match = url.exec(ctx.request.url)
