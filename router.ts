@@ -30,11 +30,13 @@ type ResolvePathParams<
 > = Parts extends [infer Item, ...infer Rest extends string[]]
 	? Item extends `:${infer Param}*`
 		? [Param, ...ResolvePathParams<Rest, Star>]
-		: Item extends `:${infer Param}`
+		: Item extends `:${infer Param}(${string})`
 			? [Param, ...ResolvePathParams<Rest, Star>]
-			: Item extends `*`
-				? [Star, ...ResolvePathParams<Rest, NextStar<Star>>]
-				: ResolvePathParams<Rest, Star>
+			: Item extends `:${infer Param}`
+				? [Param, ...ResolvePathParams<Rest, Star>]
+				: Item extends `*`
+					? [Star, ...ResolvePathParams<Rest, NextStar<Star>>]
+					: ResolvePathParams<Rest, Star>
 	: []
 type NextStar<Star extends number> =
 	| Star extends 0 ? 1 :
