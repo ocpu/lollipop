@@ -2,10 +2,20 @@ import { ApplicationMiddleware, IncomingRequestContext } from '../app.ts'
 
 interface CORSConfig {
 	addMapping(pathnamePattern: string): CORSConfigMapping
-	addMapping(pathnamePattern: string, config?: Omit<CORSMatcher, 'pattern'> | undefined): CORSConfigMapping
+	addMapping(pathnamePattern: string, config?: Omit<CORSMatcher, 'pattern' | 'status'> | undefined): CORSConfigMapping
 }
 interface CORSConfigMapping {
 	readonly and: CORSConfig
+
+	/**
+	 * Configure the numeric status that should be responeded with when a OPTIONS
+	 * request comes in.
+	 * 
+	 * The default is 204.
+	 * @param status The status that should be returned
+	 */
+	status(status: number): CORSConfigMapping
+
 	/**
 	 * Configure the allowed origins.
 	 * 
@@ -110,6 +120,7 @@ function defaultCORSConfigurer(config: CORSConfig) {
 }
 interface CORSMatcher {
 	pattern: URLPattern
+	status: number
 	origin?(ctx: Omit<IncomingRequestContext, 'next'>): string[] | Promise<string[]>
 	methods?(ctx: Omit<IncomingRequestContext, 'next'>): string[] | Promise<string[]>
 	headers?(ctx: Omit<IncomingRequestContext, 'next'>): string[] | Promise<string[]>
@@ -123,11 +134,16 @@ export async function cors(configure?: (config: CORSConfig) => unknown | Promise
 			addMapping(...args: [string, Omit<CORSMatcher, 'pattern'> | undefined] | [string]) {
 				const [pattern, init] = args
 				const matcher: CORSMatcher = {
+					status: 204,
 					pattern: new URLPattern({ pathname: pattern }),
 				}
 				matchers.push(matcher)
 				const mapping: CORSConfigMapping = {
 					and: config,
+					status(status) {
+						matcher.status = status
+						return mapping
+					},
 					allowedOrigin(...args: string[] | [(ctx: IncomingRequestContext) => string[] | Promise<string[]>]) {
 						if (args.length === 0) return mapping
 						const args0 = args[0]
@@ -180,6 +196,7 @@ export async function cors(configure?: (config: CORSConfig) => unknown | Promise
 					}
 				}
 				if (init !== undefined) {
+					if ('status' in init) mapping.status(init['status'])
 					if ('allowedOrigin' in init) mapping.allowedOrigin(init['allowedOrigin'] as ((ctx: Omit<IncomingRequestContext, 'next'>) => string[] | Promise<string[]>))
 					if ('allowedHeaders' in init) mapping.allowedHeaders(init['allowedHeaders'] as ((ctx: Omit<IncomingRequestContext, 'next'>) => string[] | Promise<string[]>))
 					if ('allowedMethods' in init) mapping.allowedMethods(init['allowedMethods'] as ((ctx: Omit<IncomingRequestContext, 'next'>) => string[] | Promise<string[]>))
@@ -193,8 +210,8 @@ export async function cors(configure?: (config: CORSConfig) => unknown | Promise
 	}
 	return async ctx => {
 		if (ctx.request.method === 'OPTIONS') {
-			ctx.response.status = 204
 			const matcher = matchers.find(matcher => matcher.pattern.test(ctx.request.url))
+			ctx.response.status = matcher?.status ?? 204
 			if (matcher === undefined) return
 			if (matcher.origin !== undefined) {
 				let res = matcher.origin(ctx)
