@@ -113,6 +113,22 @@ interface CORSConfigMapping {
 	maxAge(getDeltaSeconds: (ctx: Omit<IncomingRequestContext, 'next'>) => number | Promise<number>): CORSConfigMapping
 
 	/**
+	 * Configure a header value that will be appended to the result of the CORS request.
+	 * 
+	 * @param name The header name
+	 * @param value The header value
+	 */
+	appendHeader(name: string, value: string): CORSConfigMapping
+
+	/**
+	 * Configure a header value that will be set to the result of the CORS request.
+	 * 
+	 * @param name The header name
+	 * @param value The header value
+	 */
+	setHeader(name: string, value: string): CORSConfigMapping
+
+	/**
 	 * Configure a function that will be run at the end of the CORS checking that
 	 * can freely mutate the resulting result.
 	 * 
@@ -142,7 +158,13 @@ export async function cors(configure?: (config: CORSConfig) => unknown | Promise
 		const config: CORSConfig = {
 			addMapping(...args: [string, Omit<CORSMatcher, 'pattern'> | undefined] | [string]) {
 				const [pattern, init] = args
+				const headers: { action: 'set' | 'add', name: string, value: string }[] = []
 				const mutators: Set<(ctx: Omit<IncomingRequestContext, 'next'>) => void | Promise<void>> = new Set()
+				const headerMutator: (ctx: Omit<IncomingRequestContext, 'next'>) => void | Promise<void> = ctx => {
+					headers.forEach(({ action, name, value }) => action === 'add'
+						? ctx.response.headers.append(name, value)
+						: ctx.response.headers.set(name, value))
+				}
 				const mutate: (ctx: Omit<IncomingRequestContext, 'next'>) => void|Promise<void> = async ctx => {
 					for (const mutator of mutators) {
 						const res = mutator(ctx)
@@ -208,6 +230,18 @@ export async function cors(configure?: (config: CORSConfig) => unknown | Promise
 						} else {
 							matcher.maxAge = deltaSeconds
 						}
+						return mapping
+					},
+					appendHeader(name, value) {
+						if (matcher.mutate === undefined) matcher.mutate = mutate
+						mutators.add(headerMutator)
+						headers.push({ action: 'add', name, value })
+						return mapping
+					},
+					setHeader(name, value) {
+						if (matcher.mutate === undefined) matcher.mutate = mutate
+						mutators.add(headerMutator)
+						headers.push({ action: 'set', name, value })
 						return mapping
 					},
 					mutate(mutator) {
