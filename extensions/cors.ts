@@ -111,6 +111,14 @@ interface CORSConfigMapping {
 	 * @param getDeltaSeconds The amount of seconds that the result can be cached
 	 */
 	maxAge(getDeltaSeconds: (ctx: Omit<IncomingRequestContext, 'next'>) => number | Promise<number>): CORSConfigMapping
+
+	/**
+	 * Configure a function that will be run at the end of the CORS checking that
+	 * can freely mutate the resulting result.
+	 * 
+	 * @param mutator A function that can mutate the resulting message.
+	 */
+	mutate(mutator: (ctx: Omit<IncomingRequestContext, 'next'>) => void | Promise<void>): CORSConfigMapping
 }
 function defaultCORSConfigurer(config: CORSConfig) {
 	config
@@ -126,6 +134,7 @@ interface CORSMatcher {
 	headers?(ctx: Omit<IncomingRequestContext, 'next'>): string[] | Promise<string[]>
 	credentials?(ctx: Omit<IncomingRequestContext, 'next'>): boolean | Promise<boolean>
 	maxAge?(ctx: Omit<IncomingRequestContext, 'next'>): number | Promise<number>
+	mutate?(ctx: Omit<IncomingRequestContext, 'next'>): void | Promise<void>
 }
 export async function cors(configure?: (config: CORSConfig) => unknown | Promise<unknown>): Promise<ApplicationMiddleware> {
 	const matchers: CORSMatcher[] = []
@@ -133,6 +142,13 @@ export async function cors(configure?: (config: CORSConfig) => unknown | Promise
 		const config: CORSConfig = {
 			addMapping(...args: [string, Omit<CORSMatcher, 'pattern'> | undefined] | [string]) {
 				const [pattern, init] = args
+				const mutators: Set<(ctx: Omit<IncomingRequestContext, 'next'>) => void | Promise<void>> = new Set()
+				const mutate: (ctx: Omit<IncomingRequestContext, 'next'>) => void|Promise<void> = async ctx => {
+					for (const mutator of mutators) {
+						const res = mutator(ctx)
+						if (res !== undefined && res !== null && typeof res.then === 'function') await res
+					}
+				}
 				const matcher: CORSMatcher = {
 					status: 204,
 					pattern: new URLPattern({ pathname: pattern }),
@@ -193,6 +209,11 @@ export async function cors(configure?: (config: CORSConfig) => unknown | Promise
 							matcher.maxAge = deltaSeconds
 						}
 						return mapping
+					},
+					mutate(mutator) {
+						if (matcher.mutate === undefined) matcher.mutate = mutate
+						mutators.add(mutator)
+						return mapping
 					}
 				}
 				if (init !== undefined) {
@@ -202,6 +223,7 @@ export async function cors(configure?: (config: CORSConfig) => unknown | Promise
 					if ('allowedMethods' in init) mapping.allowedMethods(init['allowedMethods'] as ((ctx: Omit<IncomingRequestContext, 'next'>) => string[] | Promise<string[]>))
 					if ('allowCredentials' in init) mapping.allowCredentials(init['allowCredentials'] as ((ctx: Omit<IncomingRequestContext, 'next'>) => boolean | Promise<boolean>))
 					if ('maxAge' in init) mapping.maxAge(init['maxAge'] as ((ctx: Omit<IncomingRequestContext, 'next'>) => number | Promise<number>))
+					if ('mutate' in init) mapping.mutate(init['mutate'] as ((ctx: Omit<IncomingRequestContext, 'next'>) => void | Promise<void>))
 				}
 				return mapping
 			}
@@ -246,6 +268,13 @@ export async function cors(configure?: (config: CORSConfig) => unknown | Promise
 				let res = matcher.maxAge(ctx)
 				if (typeof res !== 'number') res = await res
 				ctx.response.headers.set('Access-Control-Max-Age', String(res))
+			}
+			if (matcher.mutate !== undefined) {
+				const res = matcher.mutate({
+					request: ctx.request,
+					response: ctx.response,
+				})
+				if (res !== undefined && res !== null && typeof res.then === 'function') await res
 			}
 		} else await ctx.next()
 	}
