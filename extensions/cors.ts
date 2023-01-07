@@ -6,17 +6,101 @@ interface CORSConfig {
 }
 interface CORSConfigMapping {
 	readonly and: CORSConfig
+	/**
+	 * Configure the allowed origins.
+	 * 
+	 * This can in most cases be set to `'*'` to allow all. `'*'` is not
+	 * compatible most of the time with allow credentials for most User Agents.
+	 * 
+	 * @param origins The origins that are allowed
+	 */
 	allowedOrigin(...origins: string[]): CORSConfigMapping
-	allowedOrigin(getOrigins: (ctx: IncomingRequestContext) => string[] | Promise<string[]>): CORSConfigMapping
+
+	/**
+	 * Configure the allowed origins.
+	 * 
+	 * This can in most cases be set to `'*'` to allow all. `'*'` is not
+	 * compatible most of the time with allow credentials for most User Agents.
+	 * 
+	 * @param getOrigins The origins that are allowed
+	 */
+	allowedOrigin(getOrigins: (ctx: Omit<IncomingRequestContext, 'next'>) => string[] | Promise<string[]>): CORSConfigMapping
+
+	/**
+	 * Configure the allowed verbs / methods.
+	 * 
+	 * The usual set of methods allowed are: `GET`, `HEAD`, `PUT`, `PATCH`, `POST`,
+	 * `DELETE`.
+	 * 
+	 * @param methods The methods that are allowed
+	 */
 	allowedMethods(...methods: string[]): CORSConfigMapping
-	allowedMethods(getMethods: (ctx: IncomingRequestContext) => string[] | Promise<string[]>): CORSConfigMapping
+
+	/**
+	 * Configure the allowed verbs / methods.
+	 * 
+	 * The usual set of methods allowed are: `GET`, `HEAD`, `PUT`, `PATCH`, `POST`,
+	 * `DELETE`.
+	 * 
+	 * @param getMethods The methods that are allowed
+	 */
+	allowedMethods(getMethods: (ctx: Omit<IncomingRequestContext, 'next'>) => string[] | Promise<string[]>): CORSConfigMapping
+
+	/**
+	 * Configure the allowed headers.
+	 * 
+	 * @param headers The headers that are allowed
+	 */
 	allowedHeaders(...headers: string[]): CORSConfigMapping
-	allowedHeaders(getHeaders: (ctx: IncomingRequestContext) => string[] | Promise<string[]>): CORSConfigMapping
+
+	/**
+	 * Configure the allowed headers.
+	 * 
+	 * @param getHeaders The headers that are allowed
+	 */
+	allowedHeaders(getHeaders: (ctx: Omit<IncomingRequestContext, 'next'>) => string[] | Promise<string[]>): CORSConfigMapping
+
+	/**
+	 * Configure that credentials are allowed in CORS requests.
+	 * 
+	 * Credentials usally are the cookies stored on the User Agent for your
+	 * website. [Read more on MDN](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Credentials)
+	 */
 	allowCredentials(): CORSConfigMapping
+
+	/**
+	 * Configure that credentials are allowed in CORS requests.
+	 * 
+	 * Credentials usally are the cookies stored on the User Agent for your
+	 * website. [Read more on MDN](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Credentials)
+	 * 
+	 * @param allowed Whether or not credentials are allowed.
+	 */
 	allowCredentials(allowed: boolean): CORSConfigMapping
-	allowCredentials(getAllowed: (ctx: IncomingRequestContext) => boolean | Promise<boolean>): CORSConfigMapping
+
+	/**
+	 * Configure that credentials are allowed in CORS requests.
+	 * 
+	 * Credentials usally are the cookies stored on the User Agent for your
+	 * website. [Read more on MDN](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Credentials)
+	 * 
+	 * @param getAllowed Whether or not credentials are allowed.
+	 */
+	allowCredentials(getAllowed: (ctx: Omit<IncomingRequestContext, 'next'>) => boolean | Promise<boolean>): CORSConfigMapping
+
+	/**
+	 * Configure the amount of seconds the result of a CORS request can be cached.
+	 * 
+	 * @param deltaSeconds The amount of seconds that the result can be cached
+	 */
 	maxAge(deltaSeconds: number): CORSConfigMapping
-	maxAge(getDeltaSeconds: (ctx: IncomingRequestContext) => number | Promise<number>): CORSConfigMapping
+
+	/**
+	 * Configure the amount of seconds the result of a CORS request can be cached.
+	 * 
+	 * @param getDeltaSeconds The amount of seconds that the result can be cached
+	 */
+	maxAge(getDeltaSeconds: (ctx: Omit<IncomingRequestContext, 'next'>) => number | Promise<number>): CORSConfigMapping
 }
 function defaultCORSConfigurer(config: CORSConfig) {
 	config
@@ -26,11 +110,11 @@ function defaultCORSConfigurer(config: CORSConfig) {
 }
 interface CORSMatcher {
 	pattern: URLPattern
-	origin?(ctx: IncomingRequestContext): string[] | Promise<string[]>
-	methods?(ctx: IncomingRequestContext): string[] | Promise<string[]>
-	headers?(ctx: IncomingRequestContext): string[] | Promise<string[]>
-	credentials?(ctx: IncomingRequestContext): boolean | Promise<boolean>
-	maxAge?(ctx: IncomingRequestContext): number | Promise<number>
+	origin?(ctx: Omit<IncomingRequestContext, 'next'>): string[] | Promise<string[]>
+	methods?(ctx: Omit<IncomingRequestContext, 'next'>): string[] | Promise<string[]>
+	headers?(ctx: Omit<IncomingRequestContext, 'next'>): string[] | Promise<string[]>
+	credentials?(ctx: Omit<IncomingRequestContext, 'next'>): boolean | Promise<boolean>
+	maxAge?(ctx: Omit<IncomingRequestContext, 'next'>): number | Promise<number>
 }
 export async function cors(configure?: (config: CORSConfig) => unknown | Promise<unknown>): Promise<ApplicationMiddleware> {
 	const matchers: CORSMatcher[] = []
@@ -96,11 +180,11 @@ export async function cors(configure?: (config: CORSConfig) => unknown | Promise
 					}
 				}
 				if (init !== undefined) {
-					if ('allowedOrigin' in init) mapping.allowedOrigin(init['allowedOrigin'] as ((ctx: IncomingRequestContext) => string[] | Promise<string[]>))
-					if ('allowedHeaders' in init) mapping.allowedHeaders(init['allowedHeaders'] as ((ctx: IncomingRequestContext) => string[] | Promise<string[]>))
-					if ('allowedMethods' in init) mapping.allowedMethods(init['allowedMethods'] as ((ctx: IncomingRequestContext) => string[] | Promise<string[]>))
-					if ('allowCredentials' in init) mapping.allowCredentials(init['allowCredentials'] as ((ctx: IncomingRequestContext) => boolean | Promise<boolean>))
-					if ('maxAge' in init) mapping.maxAge(init['maxAge'] as ((ctx: IncomingRequestContext) => number | Promise<number>))
+					if ('allowedOrigin' in init) mapping.allowedOrigin(init['allowedOrigin'] as ((ctx: Omit<IncomingRequestContext, 'next'>) => string[] | Promise<string[]>))
+					if ('allowedHeaders' in init) mapping.allowedHeaders(init['allowedHeaders'] as ((ctx: Omit<IncomingRequestContext, 'next'>) => string[] | Promise<string[]>))
+					if ('allowedMethods' in init) mapping.allowedMethods(init['allowedMethods'] as ((ctx: Omit<IncomingRequestContext, 'next'>) => string[] | Promise<string[]>))
+					if ('allowCredentials' in init) mapping.allowCredentials(init['allowCredentials'] as ((ctx: Omit<IncomingRequestContext, 'next'>) => boolean | Promise<boolean>))
+					if ('maxAge' in init) mapping.maxAge(init['maxAge'] as ((ctx: Omit<IncomingRequestContext, 'next'>) => number | Promise<number>))
 				}
 				return mapping
 			}
