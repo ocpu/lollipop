@@ -100,11 +100,17 @@ export interface ResponseContext {
 	text(data: string): void
 	eventSource(): ServerEventSource
 	/** Use a temporary redirect (307) to direct the client to a different location. */
-	redirect(location: string): void
+	redirect(location: string, query?: URLSearchParams | string[][] | Record<string, string> | undefined): void
+	/** Use a temporary redirect (307) to direct the client to a different location. */
+	redirect(query?: URLSearchParams | string[][] | Record<string, string> | undefined): void
 	/** Use a permanent redirect (308) to direct the client to a different location. */
-	redirectPermanent(location: string): void
+	redirectPermanent(location: string, query?: URLSearchParams | string[][] | Record<string, string> | undefined): void
+	/** Use a permanent redirect (308) to direct the client to a different location. */
+	redirectPermanent(query?: URLSearchParams | string[][] | Record<string, string> | undefined): void
 	/** Use a permanent redirect (301) to direct the client to a different location. Some very old browsers may not support the 308 status code. */
-	redirectPermanentCompat(location: string): void
+	redirectPermanentCompat(location: string, query?: URLSearchParams | string[][] | Record<string, string> | undefined): void
+	/** Use a permanent redirect (301) to direct the client to a different location. Some very old browsers may not support the 308 status code. */
+	redirectPermanentCompat(query?: URLSearchParams | string[][] | Record<string, string> | undefined): void
 }
 
 type MimeTypeString = `${string}/${string}` | `${string}/*` | `*/*` | keyof typeof mimeTypeShorthands
@@ -128,7 +134,7 @@ export interface RequestContext {
 	 * for that content type. `else` must be defined for any other content type that does not appear as a key.
 	 */
 	accepting(
-		typesObject: { [K: string]: () => void | Promise<void> } & { else: () => void | Promise<void> }
+		typesObject: { [K: string]: () => void | Promise<void>, else: () => void | Promise<void> }
 	): void | Promise<void>
 }
 
@@ -347,18 +353,31 @@ export function createApp(_middlewares?: ApplicationMiddleware[]): Application {
 						},
 					})
 				},
-				redirect(location) {
-					response.status = request.method === 'PUT' || request.method === 'POST' ? 303 : 307
-					response.headers.set('Location', location)
+				redirect(...args: [location: string, query?: URLSearchParams | string[][] | Record<string, string> | undefined] | [query?: URLSearchParams | string[][] | Record<string, string> | undefined]) {
+					doRedirect(307, args)
 				},
-				redirectPermanent(location) {
-					response.status = request.method === 'PUT' || request.method === 'POST' ? 303 : 308
-					response.headers.set('Location', location)
+				redirectPermanent(...args: [location: string, query?: URLSearchParams | string[][] | Record<string, string> | undefined] | [query?: URLSearchParams | string[][] | Record<string, string> | undefined]) {
+					doRedirect(308, args)
 				},
-				redirectPermanentCompat(location) {
-					response.status = request.method === 'PUT' || request.method === 'POST' ? 303 : 301
-					response.headers.set('Location', location)
+				redirectPermanentCompat(...args: [location: string, query?: URLSearchParams | string[][] | Record<string, string> | undefined] | [query?: URLSearchParams | string[][] | Record<string, string> | undefined]) {
+					doRedirect(301, args)
 				},
+			}
+
+			function doRedirect(status: number, args: [location: string, query?: URLSearchParams | string[][] | Record<string, string> | undefined] | [query?: URLSearchParams | string[][] | Record<string, string> | undefined]) {
+				const location = typeof args[0] === 'string'
+					? new URL(args[0], request.url)
+					: new URL(request.url)
+				const query = typeof args[1] === 'object' && args[1] !== null
+					? args[1]
+					: typeof args[0] === 'object' && args[0] !== null
+						? args[0]
+						: undefined
+				response.status = request.method === 'PUT' || request.method === 'POST' ? 303 : status
+				if (query !== undefined) location.search = new URLSearchParams(query).toString()
+				response.headers.set('Location', location.origin === request.url.origin
+					? location.pathname + location.search
+					: location.toString())
 			}
 
 			const ctx: IncomingRequestContext = {
