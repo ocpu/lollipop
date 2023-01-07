@@ -20,7 +20,7 @@ function isRouteContext(ctx: IncomingRequestContext | IncomingRequestRouteContex
  * @param path
  *
  */
- export async function serveDirectory(
+export default async function serveDirectory(
 	path: string | URL,
 	options?: ServeDirectoryOptions & { baseURL?: string }
 ) {
