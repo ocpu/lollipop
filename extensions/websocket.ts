@@ -14,7 +14,7 @@ function isRouteContext(ctx: IncomingRequestContext | IncomingRequestRouteContex
 	return !('next' in ctx)
 }
 
-export function websocket(handler: (websocket: WebSocket) => void | Promise<void>) {
+export default function configureWebSocket(handler: (websocket: WebSocket) => void | Promise<void>) {
 	return async (ctx: IncomingRequestContext | IncomingRequestRouteContext<string>) => {
 		if (ctx.request.method !== 'GET') {
 			if (isRouteContext(ctx)) {
