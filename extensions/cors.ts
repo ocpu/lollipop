@@ -152,7 +152,7 @@ interface CORSMatcher {
 	maxAge?(ctx: Omit<IncomingRequestContext, 'next'>): number | Promise<number>
 	mutate?(ctx: Omit<IncomingRequestContext, 'next'>): void | Promise<void>
 }
-export async function cors(configure?: (config: CORSConfig) => unknown | Promise<unknown>): Promise<ApplicationMiddleware> {
+export default async function configureCORS(configure?: (config: CORSConfig) => unknown | Promise<unknown>): Promise<ApplicationMiddleware> {
 	const matchers: CORSMatcher[] = []
 	{
 		const config: CORSConfig = {
