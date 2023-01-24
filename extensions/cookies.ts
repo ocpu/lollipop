@@ -34,7 +34,7 @@ export default function configureCookies(): ApplicationMiddlewareFunction {
 	return async (ctx: IncomingRequestContext) => {
 		//@ts-ignore Has to provide the value
 		ctx.request.cookies = Object.fromEntries(
-			(ctx.request.headers.get('cookies') || '')
+			(ctx.request.headers.get('cookie') || '')
 				.trim()
 				.split(/ *; */g)
 				.filter(Boolean)
