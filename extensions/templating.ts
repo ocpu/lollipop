@@ -1,4 +1,4 @@
-import * as Path from 'std/path/mod.ts'
+import * as Path from 'https://deno.land/std@0.152.0/path/mod.ts'
 import { ApplicationMiddlewareFunction } from '../app.ts'
 
 declare global {

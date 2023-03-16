@@ -64,7 +64,7 @@ export default async function serveDirectory(
 			? options.directoryListing
 			: undefined
 
-	const { serveFile } = await import('std/http/file_server.ts')
+	const { serveFile } = await import('https://deno.land/std@0.152.0/http/file_server.ts')
 
 	return async (ctx: IncomingRequestContext | IncomingRequestRouteContext<string>) => {
 		if (ctx.request.method !== 'GET') {
@@ -131,8 +131,8 @@ export default async function serveDirectory(
 }
 
 export async function defaultDirectoryListingFactory() {
-	const Path = await import("std/path/mod.ts")
-	const { serveFile } = await import("std/http/file_server.ts")
+	const Path = await import("https://deno.land/std@0.152.0/path/mod.ts")
+	const { serveFile } = await import("https://deno.land/std@0.152.0/http/file_server.ts")
 
 	return async (ctx: IncomingRequestDirectoryContext) => {
 		const entries: { entry: Deno.DirEntry; stat: Deno.FileInfo }[] = []

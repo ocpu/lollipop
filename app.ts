@@ -1,6 +1,6 @@
-import type { ServeInit } from 'std/http/server.ts'
-import { deferred, Deferred } from 'std/async/mod.ts'
-import { accepts } from 'std/http/negotiation.ts'
+import type { ServeInit } from 'https://deno.land/std@0.152.0/http/server.ts'
+import { deferred, Deferred } from 'https://deno.land/std@0.152.0/async/mod.ts'
+import { accepts } from 'https://deno.land/std@0.152.0/http/negotiation.ts'
 
 declare global {
 	namespace Lollipop {
